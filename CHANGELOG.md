@@ -30,10 +30,12 @@ This file records dated architectural decisions, features, bug fixes, and change
    - Initialized local persistent SQLite database (`data/flights.db`).
    - Added `run_local.ps1` (PowerShell) and `run_local.bat` (Command Prompt) scripts for native Windows execution.
    - Added `.env.example` detailing configuration variables (`DB_PATH`, `TZ`, `POLL_INTERVAL_MINUTES`, `CURRENCY`, `PUSHOVER_TOKEN`, `PUSHOVER_USER`, `DISCORD_WEBHOOK_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).
-4. **24/7 Cloud Deployment Configurations (Render & Railway):**
+4. **24/7 Cloud & Background Deployment Configurations (Render, Fly.io, Windows):**
    - Configured `main.py` and `Dockerfile` to accept dynamic cloud `$PORT` routing.
-   - Added `render.yaml` for 1-click Render deployment with persistent disk mounting (`/data`).
-   - Added `railway.json` and `Procfile` for Railway container deployment.
+   - Added `render.yaml` for 1-click Render.com deployment with persistent disk mounting (`/data`).
+   - Added `fly.toml` for Fly.io Docker deployment with persistent volume mount.
+   - Added `railway.json` and `Procfile` for container / WSGI deployment.
+   - Added `setup_windows_service.ps1` for running as a persistent 24/7 silent background service on Windows via Task Scheduler.
    - Added `gunicorn` to `requirements.txt` for production WSGI serving with single-worker scheduler safety.
 
 ---
