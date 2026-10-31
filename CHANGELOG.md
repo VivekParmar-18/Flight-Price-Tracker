@@ -19,6 +19,9 @@ This file records dated architectural decisions, features, bug fixes, and change
    - Added `_clean_iata` regex extraction for origins/destinations.
    - Added automatic named trip resolution: if a user types a trip name (e.g. "Karan") rather than an ID, the backend automatically finds or creates the trip and assigns the routes.
    - Enhanced modal error feedback to display the exact backend error message.
+3. **Default Seed Data on Deployment (`app/db.py`, `app/scheduler.py`):**
+   - Added automatic database pre-seeding so clean container deployments (Render) automatically create the 'Karan' named trip and 6 date variants for YYZ <-> AMD (2027-01-10 & 2027-02-13 with ±1 day flexibility, target price ₹90,000, INR currency, notifications ON).
+   - Configured scheduler with `next_run_time=datetime.now()` to immediately fetch prices on application boot rather than waiting for the first 60-minute interval.
 
 ---
 

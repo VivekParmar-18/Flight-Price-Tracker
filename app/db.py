@@ -59,6 +59,52 @@ def init_db(db_path: str):
             );
         """)
     _migrate(db_path)
+    _seed_default_data(db_path)
+
+
+def _seed_default_data(db_path: str):
+    """
+    Ensure the user's default trip and routes exist immediately after deployment,
+    so even if deployed on a fresh container or without a persistent volume,
+    the 'Karan' trip and YYZ <-> AMD routes are pre-populated automatically.
+    """
+    with _connect(db_path) as conn:
+        route_count = conn.execute("SELECT COUNT(*) FROM routes").fetchone()[0]
+        if route_count > 0:
+            return  # Already populated
+
+        # Check or create trip 'Karan'
+        trip_row = conn.execute("SELECT id FROM trips WHERE name = ?", ("Karan",)).fetchone()
+        if trip_row:
+            trip_id = trip_row['id']
+        else:
+            cur = conn.execute(
+                "INSERT INTO trips (name, notes, budget, color, created_at) VALUES (?, ?, ?, ?, ?)",
+                ("Karan", "YYZ <-> AMD Trip", 100000.0, "#00cfe0", _now())
+            )
+            trip_id = cur.lastrowid
+
+        # Insert Outbound YYZ -> AMD on 2027-01-10 (-1, 0, +1)
+        # and Return AMD -> YYZ on 2027-02-13 (-1, 0, +1)
+        legs = [
+            ('outbound', 'YYZ', 'AMD', [('2027-01-09', -1), ('2027-01-10', 0), ('2027-01-11', 1)]),
+            ('return', 'AMD', 'YYZ', [('2027-02-12', -1), ('2027-02-13', 0), ('2027-02-14', 1)]),
+        ]
+        trip_group_id = 1
+        for leg_label, orig, dest, variants in legs:
+            for date_str, offset in variants:
+                conn.execute(
+                    """INSERT INTO routes (
+                        trip_id, named_trip_id, leg_label, origin, destination,
+                        departure_date, non_stop_only, airlines, adults, seat_type,
+                        active, created_at, day_offset, notify, target_price
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1, 90000)""",
+                    (trip_group_id, trip_id, leg_label, orig, dest, date_str, 0, None, 1, 'ECONOMY', _now(), offset)
+                )
+
+        # Set default settings: INR, 60 min poll
+        conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('currency', 'INR')")
+        conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('poll_interval_minutes', '60')")
 
 
 def _migrate(db_path: str):

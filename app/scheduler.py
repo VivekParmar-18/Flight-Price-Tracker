@@ -21,6 +21,7 @@ def start_scheduler(app):
     interval = int(get_setting(db_path, 'poll_interval_minutes', default_interval))
     set_setting(db_path, 'poll_interval_minutes', str(interval))
 
+    from datetime import datetime as dt
     _scheduler = BackgroundScheduler(timezone='America/Los_Angeles')
     _scheduler.add_job(
         check_all_routes,
@@ -29,6 +30,7 @@ def start_scheduler(app):
         args=[db_path],
         id=JOB_ID,
         replace_existing=True,
+        next_run_time=dt.now(),
     )
     _scheduler.start()
     logger.info("Scheduler started; polling every %d minutes", interval)
