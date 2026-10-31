@@ -21,6 +21,9 @@
   </div>
   <div class="fp-nav-actions">
     <span id="last-checked-text" class="fp-last-checked d-none d-md-inline"></span>
+    <a href="/api/export/csv" class="btn-fp-ghost" title="Export Price History (CSV)">
+      <i class="bi bi-download"></i><span class="d-none d-md-inline ms-1">CSV</span>
+    </a>
     <button class="btn-fp-ghost" id="btn-check-now" onclick="checkNow()">
       <i class="bi bi-arrow-clockwise"></i><span class="d-none d-sm-inline ms-1">Refresh</span>
     </button>
@@ -122,7 +125,7 @@
         <div class="mb-3">
           <label class="form-label">Budget <span class="fp-label-hint">(optional — total for all flights)</span></label>
           <div class="fp-input-prefix-wrap">
-            <span class="fp-input-prefix">$</span>
+            <span class="fp-input-prefix" id="trip-budget-prefix">₹</span>
             <input type="number" class="form-control form-control-sm fp-prefixed" id="trip-budget"
                    placeholder="700" min="0" step="1">
           </div>
@@ -197,18 +200,20 @@
           </div>
           <div class="fp-segment-body">
             <div class="row g-2">
-              <div class="col-5">
+              <div class="col-5 position-relative">
                 <label class="form-label">Origin</label>
                 <input type="text" class="form-control form-control-sm fp-iata-input text-uppercase" id="out-origin"
-                       placeholder="JFK" maxlength="3" oninput="this.value=this.value.toUpperCase()">
+                       placeholder="JFK / Toronto" autocomplete="off" oninput="handleAirportInput(this, 'out-origin-list')">
+                <div class="airport-autocomplete-dropdown d-none" id="out-origin-list"></div>
               </div>
               <div class="col-2 d-flex align-items-end justify-content-center pb-2">
                 <i class="bi bi-arrow-right fp-arrow-icon"></i>
               </div>
-              <div class="col-5">
+              <div class="col-5 position-relative">
                 <label class="form-label">Destination</label>
                 <input type="text" class="form-control form-control-sm fp-iata-input text-uppercase" id="out-dest"
-                       placeholder="LHR" maxlength="3" oninput="this.value=this.value.toUpperCase()">
+                       placeholder="LHR / Delhi" autocomplete="off" oninput="handleAirportInput(this, 'out-dest-list')">
+                <div class="airport-autocomplete-dropdown d-none" id="out-dest-list"></div>
               </div>
               <div class="col-12">
                 <label class="form-label">Departure Date</label>
@@ -225,18 +230,20 @@
           </div>
           <div class="fp-segment-body">
             <div class="row g-2">
-              <div class="col-5">
+              <div class="col-5 position-relative">
                 <label class="form-label">Origin</label>
                 <input type="text" class="form-control form-control-sm fp-iata-input text-uppercase" id="ret-origin"
-                       placeholder="LHR" maxlength="3" oninput="this.value=this.value.toUpperCase()">
+                       placeholder="LHR / Delhi" autocomplete="off" oninput="handleAirportInput(this, 'ret-origin-list')">
+                <div class="airport-autocomplete-dropdown d-none" id="ret-origin-list"></div>
               </div>
               <div class="col-2 d-flex align-items-end justify-content-center pb-2">
                 <i class="bi bi-arrow-right fp-arrow-icon"></i>
               </div>
-              <div class="col-5">
+              <div class="col-5 position-relative">
                 <label class="form-label">Destination</label>
                 <input type="text" class="form-control form-control-sm fp-iata-input text-uppercase" id="ret-dest"
-                       placeholder="JFK" maxlength="3" oninput="this.value=this.value.toUpperCase()">
+                       placeholder="JFK / Toronto" autocomplete="off" oninput="handleAirportInput(this, 'ret-dest-list')">
+                <div class="airport-autocomplete-dropdown d-none" id="ret-dest-list"></div>
               </div>
               <div class="col-12">
                 <label class="form-label">Return Date</label>
@@ -296,15 +303,52 @@
       <div class="modal-body">
         <label class="form-label">Poll Interval (minutes)</label>
         <input type="number" class="form-control form-control-sm mb-1" id="setting-interval" min="15" max="10080" placeholder="480">
-        <div class="fp-hint mb-4">Min 15 · Max 10080 (1 week) · Default 480 = 3× per day</div>
+        <div class="fp-hint mb-3">Min 15 · Max 10080 (1 week) · Default 480 = 3× per day</div>
+
+        <label class="form-label">Currency</label>
+        <select class="form-select form-select-sm mb-1" id="setting-currency">
+          <option value="INR">INR (₹) — Indian Rupee</option>
+          <option value="USD">USD ($) — US Dollar</option>
+          <option value="CAD">CAD (CA$) — Canadian Dollar</option>
+          <option value="EUR">EUR (€) — Euro</option>
+          <option value="GBP">GBP (£) — British Pound</option>
+          <option value="AUD">AUD (A$) — Australian Dollar</option>
+        </select>
+        <div class="fp-hint mb-4">Currency for tracking flight prices & Pushover alerts</div>
         <hr class="fp-divider">
-        <div class="d-flex align-items-center justify-content-between mt-3">
-          <div>
-            <div class="fp-setting-label">Pushover Notifications</div>
-            <div class="fp-hint">Send a test alert to verify credentials.</div>
+        <div class="fp-setting-label mb-2"><i class="bi bi-bell me-1"></i>Notification Channels</div>
+        <div class="fp-hint mb-3">Get instant price drops on Discord, Telegram, or Pushover.</div>
+
+        <div class="mb-2">
+          <label class="form-label">Discord Webhook URL <span class="fp-label-hint">(free)</span></label>
+          <input type="url" class="form-control form-control-sm" id="setting-discord-webhook" placeholder="https://discord.com/api/webhooks/...">
+        </div>
+
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <label class="form-label">Telegram Bot Token <span class="fp-label-hint">(free)</span></label>
+            <input type="text" class="form-control form-control-sm" id="setting-telegram-token" placeholder="123456:ABC-DEF...">
           </div>
-          <button class="btn-fp-ghost ms-3" id="btn-test-notify" onclick="testNotification()">
-            <i class="bi bi-bell me-1"></i>Test
+          <div class="col-6">
+            <label class="form-label">Telegram Chat ID</label>
+            <input type="text" class="form-control form-control-sm" id="setting-telegram-chat" placeholder="e.g. 987654321">
+          </div>
+        </div>
+
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label">Pushover User Key</label>
+            <input type="text" class="form-control form-control-sm" id="setting-pushover-user" placeholder="User key">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Pushover App Token</label>
+            <input type="text" class="form-control form-control-sm" id="setting-pushover-token" placeholder="App token">
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center justify-content-between">
+          <button class="btn-fp-ghost" id="btn-test-notify" onclick="testNotification()">
+            <i class="bi bi-send me-1"></i>Test All Channels
           </button>
         </div>
         <div id="notify-result" class="mt-2 small d-none"></div>
@@ -327,6 +371,56 @@
       </div>
       <div class="modal-body">
         <canvas id="chart-modal-canvas" height="100"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Flight Details Modal ─────────────────────────────────────────────── -->
+<div class="modal fade" id="flightDetailsModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title mb-0" id="flight-details-title">Flight Details</h5>
+          <div class="text-secondary small mt-1" id="flight-details-subtitle"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="flight-details-content"></div>
+      </div>
+      <div class="modal-footer d-flex justify-content-between align-items-center">
+        <span id="flight-details-duration" class="text-secondary small"></span>
+        <a id="btn-open-google-flights" href="#" target="_blank" rel="noopener" class="btn-fp-primary">
+          <i class="bi bi-box-arrow-up-right me-1"></i>Book / View on Google Flights
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Target Price Modal ────────────────────────────────────────────────── -->
+<div class="modal fade" id="targetPriceModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-bullseye me-2 text-warning"></i>Price Alert Target</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="target-price-ids">
+        <div class="mb-2 text-secondary small" id="target-price-desc">Set a target price to receive an alert when this route drops to or below this amount.</div>
+        <label class="form-label">Target Price</label>
+        <div class="fp-input-prefix-wrap">
+          <span class="fp-input-prefix" id="target-price-prefix">₹</span>
+          <input type="number" class="form-control form-control-sm fp-prefixed" id="target-price-val" placeholder="e.g. 75000" min="1">
+        </div>
+        <div class="fp-hint mt-2">Leave blank or enter 0 to remove target.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-fp-ghost" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn-fp-primary" onclick="saveTargetPrice()">Save Target</button>
       </div>
     </div>
   </div>

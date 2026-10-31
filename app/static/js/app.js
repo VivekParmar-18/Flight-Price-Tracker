@@ -13,6 +13,115 @@ let _tripFromRouteModal = false;
 // trip builder: map of route_id -> {label, price}
 const tripSelection = new Map();
 
+const CURRENCY_SYMBOLS = {
+  USD: '$',
+  INR: '₹',
+  EUR: '€',
+  GBP: '£',
+  CAD: 'CA$',
+  AUD: 'A$',
+  JPY: '¥',
+};
+let appCurrency = 'INR';
+
+function getCurrencySymbol(curr = appCurrency) {
+  return CURRENCY_SYMBOLS[curr] || (curr ? curr + ' ' : '₹');
+}
+
+function formatMoney(amount, curr = appCurrency) {
+  if (amount == null) return '—';
+  const sym = getCurrencySymbol(curr);
+  return `${sym}${Math.round(amount).toLocaleString()}`;
+}
+
+function formatMinutes(mins) {
+  if (!mins) return 'n/a';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function formatTime(dtStr) {
+  if (!dtStr) return '—';
+  try {
+    const d = new Date(dtStr);
+    return isNaN(d.getTime()) ? dtStr : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return dtStr;
+  }
+}
+
+function getMinutesDiff(startStr, endStr) {
+  if (!startStr || !endStr) return 0;
+  try {
+    const s = new Date(startStr);
+    const e = new Date(endStr);
+    return Math.max(0, Math.round((e - s) / 60000));
+  } catch {
+    return 0;
+  }
+}
+
+function getGoogleFlightsUrl(origin, destination, date, returnDate = null, seat = 'ECONOMY', nonStop = false) {
+  const nonStopParam = nonStop ? '%20nonstop' : '';
+  if (returnDate) {
+    return `https://www.google.com/travel/flights?q=Flights%20from%20${origin}%20to%20${destination}%20departing%20${date}%20returning%20${returnDate}${nonStopParam}`;
+  }
+  return `https://www.google.com/travel/flights?q=Flights%20to%20${destination}%20from%20${origin}%20on%20${date}%20one-way${nonStopParam}`;
+}
+
+// ── Airport Autocomplete ───────────────────────────────────────────────────
+let airportDebounce = null;
+async function handleAirportInput(input, listId) {
+  const listEl = document.getElementById(listId);
+  const q = input.value.trim();
+  if (q.length < 2) {
+    listEl.classList.add('d-none');
+    listEl.innerHTML = '';
+    return;
+  }
+  clearTimeout(airportDebounce);
+  airportDebounce = setTimeout(async () => {
+    try {
+      const res = await fetch(`/api/airports?q=${encodeURIComponent(q)}`);
+      const airports = await res.json();
+      if (!airports.length) {
+        listEl.classList.add('d-none');
+        return;
+      }
+      listEl.innerHTML = airports.map(a => `
+        <div class="airport-item" onclick="selectAirport('${input.id}', '${listId}', '${a.code}')">
+          <span class="airport-code-badge">${a.code}</span>
+          <div class="airport-info">
+            <div class="airport-name">${a.name}</div>
+            ${a.city ? `<div class="airport-city">${a.city}</div>` : ''}
+          </div>
+        </div>
+      `).join('');
+      listEl.classList.remove('d-none');
+    } catch (e) {
+      console.error('Airport search error:', e);
+    }
+  }, 200);
+}
+
+function selectAirport(inputId, listId, code) {
+  const input = document.getElementById(inputId);
+  if (input) input.value = code;
+  const list = document.getElementById(listId);
+  if (list) {
+    list.classList.add('d-none');
+    list.innerHTML = '';
+  }
+  autoFillReturn();
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.position-relative')) {
+    document.querySelectorAll('.airport-autocomplete-dropdown').forEach(d => d.classList.add('d-none'));
+  }
+});
+
 const TRIP_COLORS = [
   '#00cfe0', '#00e09a', '#f0b22a', '#ff4f4f',
   '#a78bfa', '#fb923c', '#38bdf8', '#f472b6',
@@ -118,17 +227,18 @@ async function renderComboBanner(tripId) {
       return;
     }
 
+    const curr = combo.currency || appCurrency;
     document.getElementById('combo-legs').innerHTML = combo.legs
-      .map(l => `<span class="combo-leg">${l.origin}→${l.destination} <strong>$${Math.round(l.price).toLocaleString()}</strong><span class="combo-leg-date">${l.departure_date}</span></span>`)
+      .map(l => `<span class="combo-leg">${l.origin}→${l.destination} <strong>${formatMoney(l.price, curr)}</strong><span class="combo-leg-date">${l.departure_date}</span></span>`)
       .join('');
-    document.getElementById('combo-total').textContent = `$${Math.round(combo.total).toLocaleString()}`;
+    document.getElementById('combo-total').textContent = formatMoney(combo.total, curr);
 
     const trip    = namedTrips.find(t => t.id === tripId);
     const budgetEl = document.getElementById('combo-budget-row');
     if (trip?.budget) {
       const remaining = trip.budget - combo.total;
       const color = remaining >= 0 ? 'var(--c-green)' : 'var(--c-red)';
-      budgetEl.innerHTML = `Budget $${Math.round(trip.budget).toLocaleString()} · <span style="color:${color}">${remaining < 0 ? '−' : ''}$${Math.round(Math.abs(remaining)).toLocaleString()} ${remaining >= 0 ? 'under budget' : 'over budget'}</span>`;
+      budgetEl.innerHTML = `Budget ${formatMoney(trip.budget, curr)} · <span style="color:${color}">${remaining < 0 ? '−' : ''}${formatMoney(Math.abs(remaining), curr)} ${remaining >= 0 ? 'under budget' : 'over budget'}</span>`;
       budgetEl.classList.remove('d-none');
     } else {
       budgetEl.classList.add('d-none');
@@ -438,6 +548,11 @@ function buildLegSection(leg, isRoundTrip) {
   const bellIcon  = notifyOn ? 'bi-bell-fill' : 'bi-bell';
   const bellTitle = notifyOn ? 'Notifications on — click to disable' : 'Notifications off — click to enable';
 
+  const targetPrice = leg.dates[0]?.target_price;
+  const hasTarget   = targetPrice != null;
+  const targetMet   = hasTarget && leg.dates.some(r => r.current_price != null && r.current_price <= targetPrice);
+  const targetClass = hasTarget ? (targetMet ? 'target-badge met' : 'target-badge') : 'btn btn-sm btn-outline-secondary py-0 px-1';
+
   const assignedTrip = namedTrips.find(t => t.id === leg.named_trip_id);
   const tagStyle = assignedTrip ? `color:${assignedTrip.color};border-color:${assignedTrip.color}40` : '';
   const tagIcon  = assignedTrip ? 'bi-tag-fill' : 'bi-tag';
@@ -456,6 +571,12 @@ function buildLegSection(leg, isRoundTrip) {
         <div class="text-secondary small mt-1">${seatLabel}${adults}${nonstop} · ${airlinesStr}</div>
       </div>
       <div class="d-flex gap-1 align-items-center">
+        <button class="${targetClass}"
+                onclick="openTargetPriceModal([${leg.ids.join(',')}], ${targetPrice ?? 'null'}, '${leg.origin} → ${leg.destination}')"
+                title="${hasTarget ? `Target: ${formatMoney(targetPrice, leg.dates[0]?.currency || appCurrency)}` : 'Set price target alert'}">
+          <i class="bi bi-bullseye small"></i>
+          ${hasTarget ? `<span class="small ms-1">${targetMet ? '✓ ' : ''}${formatMoney(targetPrice, leg.dates[0]?.currency || appCurrency)}</span>` : ''}
+        </button>
         <div class="dropdown">
           <button class="btn btn-sm btn-outline-secondary py-0 px-1" style="${tagStyle}"
                   data-bs-toggle="dropdown" title="${assignedTrip ? `Trip: ${assignedTrip.name}` : 'Assign to trip'}">
@@ -509,10 +630,14 @@ function buildDateSubcard(r) {
   card.className = `date-subcard p-2${isTarget ? ' is-target-date' : ''}${isSelected ? ' selected' : ''}`;
   card.id = `subcard-${r.id}`;
 
-  const priceHtml   = formatPrice(r.current_price, r.prev_price);
+  const rCurr = r.currency || appCurrency;
+  const priceHtml   = formatPrice(r.current_price, r.prev_price, rCurr);
   const trendHtml   = renderTrend(r.trend);
-  const statsHtml   = renderStats(r.price_min, r.price_avg, r.price_max, r.price_count);
+  const statsHtml   = renderStats(r.price_min, r.price_avg, r.price_max, r.price_count, rCurr);
   const lastChecked = r.last_checked ? timeAgo(r.last_checked) : 'never';
+  const isHistoricLow = r.current_price != null && r.price_min != null && r.current_price <= r.price_min && r.price_count >= 2;
+  const dealBadge   = isHistoricLow ? `<div class="text-center mb-1"><span class="badge-deal"><i class="bi bi-fire"></i>All-Time Low!</span></div>` : '';
+  const gfUrl       = getGoogleFlightsUrl(r.origin, r.destination, r.departure_date, null, r.seat_type, r.non_stop_only);
 
   card.innerHTML = `
     <input type="checkbox" class="route-checkbox" id="chk-${r.id}"
@@ -522,13 +647,22 @@ function buildDateSubcard(r) {
       <span class="badge ${offsetClass} rounded-pill">${offsetLabel}</span>
     </div>
     <div class="text-center small mb-1">${r.departure_date}</div>
+    ${dealBadge}
     <div class="text-center mb-0">${priceHtml}</div>
     <div class="text-center mb-1">${trendHtml}</div>
     <div class="text-center mb-1">${statsHtml}</div>
     <div class="chart-area" style="height:48px"
-         title="checked ${lastChecked}"
+         title="checked ${lastChecked} — click to view history graph"
          onclick="openChartModal(${r.id}, '${r.origin}→${r.destination} · ${r.departure_date}')">
       <canvas id="chart-${r.id}"></canvas>
+    </div>
+    <div class="subcard-actions">
+      <button class="subcard-btn" onclick="openFlightDetails(${r.id})" title="View Itinerary & Layovers">
+        <i class="bi bi-info-circle me-1"></i>Details
+      </button>
+      <a href="${gfUrl}" target="_blank" rel="noopener" class="subcard-btn" title="Open on Google Flights">
+        <i class="bi bi-box-arrow-up-right me-1"></i>Google
+      </a>
     </div>
   `;
 
@@ -545,9 +679,9 @@ function renderTrend(trend) {
   return map[trend] || '';
 }
 
-function renderStats(min, avg, max, count) {
+function renderStats(min, avg, max, count, curr = appCurrency) {
   if (!count || count < 2) return `<span class="price-stats">No history yet</span>`;
-  const fmt = n => n != null ? `$${Math.round(n).toLocaleString()}` : '—';
+  const fmt = n => n != null ? formatMoney(n, curr) : '—';
   return `<span class="price-stats">
     <span class="stat-low" title="All-time low">↓${fmt(min)}</span>
     <span class="mx-1 text-secondary">·</span>
@@ -557,9 +691,9 @@ function renderStats(min, avg, max, count) {
   </span>`;
 }
 
-function formatPrice(current, prev) {
+function formatPrice(current, prev, curr = appCurrency) {
   if (current == null) return `<span class="price-none" style="font-size:1rem">—</span>`;
-  const fmt = n => `$${Math.round(n).toLocaleString()}`;
+  const fmt = n => formatMoney(n, curr);
   let changeHtml = '';
   if (prev != null && prev !== current) {
     const diff = current - prev;
@@ -637,7 +771,7 @@ function chartConfig(data, mini = false) {
           titleColor: '#4a7090',
           bodyColor: '#f0b22a',
           bodyFont: { family: "'JetBrains Mono', monospace", size: 12 },
-          callbacks: { label: ctx => `$${Math.round(ctx.parsed.y).toLocaleString()}` }
+          callbacks: { label: ctx => formatMoney(ctx.parsed.y, appCurrency) }
         }
       },
       scales: {
@@ -651,7 +785,7 @@ function chartConfig(data, mini = false) {
           min: minP - pad,
           max: maxP + pad,
           grid: { color: mini ? 'transparent' : '#0f2035' },
-          ticks: { display: !mini, color: '#4a7090', callback: v => `$${Math.round(v).toLocaleString()}`, font: { size: 10 } }
+          ticks: { display: !mini, color: '#4a7090', callback: v => formatMoney(v, appCurrency), font: { size: 10 } }
         }
       }
     }
@@ -718,7 +852,7 @@ function renderTripBuilder() {
     const span = document.createElement('span');
     span.className = 'trip-item-badge';
     span.innerHTML = `${label} ${price != null
-      ? `<strong>$${Math.round(price).toLocaleString()}</strong>`
+      ? `<strong>${formatMoney(price, appCurrency)}</strong>`
       : '<em class="text-secondary">no price</em>'}
       <button class="btn-close ms-1" style="font-size:0.5rem" onclick="removeTripItem(${id})"></button>`;
     itemsEl.appendChild(span);
@@ -729,7 +863,7 @@ function renderTripBuilder() {
   countEl.textContent = `${tripSelection.size} flight${tripSelection.size > 1 ? 's' : ''} selected`;
   totalEl.innerHTML = hasNull
     ? `<span class="text-secondary">Total: n/a</span>`
-    : `Total: <span class="text-success">$${Math.round(total).toLocaleString()}</span>`;
+    : `Total: <span class="text-success">${formatMoney(total, appCurrency)}</span>`;
 }
 
 function removeTripItem(routeId) {
@@ -911,6 +1045,30 @@ async function loadSettings() {
     const res  = await fetch('/api/settings');
     const data = await res.json();
     document.getElementById('setting-interval').value = data.poll_interval_minutes;
+    if (data.currency) {
+      appCurrency = data.currency;
+      const curSelect = document.getElementById('setting-currency');
+      if (curSelect) curSelect.value = data.currency;
+      const prefixEl = document.getElementById('trip-budget-prefix');
+      if (prefixEl) prefixEl.textContent = getCurrencySymbol(appCurrency);
+      const targetPrefix = document.getElementById('target-price-prefix');
+      if (targetPrefix) targetPrefix.textContent = getCurrencySymbol(appCurrency);
+    }
+    if (document.getElementById('setting-discord-webhook')) {
+      document.getElementById('setting-discord-webhook').value = data.discord_webhook_url || '';
+    }
+    if (document.getElementById('setting-telegram-token')) {
+      document.getElementById('setting-telegram-token').value = data.telegram_bot_token || '';
+    }
+    if (document.getElementById('setting-telegram-chat')) {
+      document.getElementById('setting-telegram-chat').value = data.telegram_chat_id || '';
+    }
+    if (document.getElementById('setting-pushover-user')) {
+      document.getElementById('setting-pushover-user').value = data.pushover_user || '';
+    }
+    if (document.getElementById('setting-pushover-token')) {
+      document.getElementById('setting-pushover-token').value = data.pushover_token || '';
+    }
   } catch (e) {
     console.error('Failed to load settings:', e);
   }
@@ -923,16 +1081,137 @@ function openSettingsModal() {
 
 async function saveSettings() {
   const interval = parseInt(document.getElementById('setting-interval').value);
+  const currency = document.getElementById('setting-currency')?.value || appCurrency;
+  const body = {
+    poll_interval_minutes: interval,
+    currency,
+    discord_webhook_url: document.getElementById('setting-discord-webhook')?.value.trim() || '',
+    telegram_bot_token: document.getElementById('setting-telegram-token')?.value.trim() || '',
+    telegram_chat_id: document.getElementById('setting-telegram-chat')?.value.trim() || '',
+    pushover_user: document.getElementById('setting-pushover-user')?.value.trim() || '',
+    pushover_token: document.getElementById('setting-pushover-token')?.value.trim() || '',
+  };
   try {
-    await fetch('/api/settings', {
+    const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ poll_interval_minutes: interval }),
+      body: JSON.stringify(body),
     });
+    const data = await res.json();
+    if (data.currency) {
+      appCurrency = data.currency;
+      const prefixEl = document.getElementById('trip-budget-prefix');
+      if (prefixEl) prefixEl.textContent = getCurrencySymbol(appCurrency);
+      const targetPrefix = document.getElementById('target-price-prefix');
+      if (targetPrefix) targetPrefix.textContent = getCurrencySymbol(appCurrency);
+    }
     bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide();
+    await loadRoutes();
+    await loadNamedTrips();
   } catch (e) {
     alert('Failed to save settings.');
   }
+}
+
+// ── Target Price Modal ─────────────────────────────────────────────────────
+function openTargetPriceModal(ids, currentTarget, routeTitle) {
+  document.getElementById('target-price-ids').value = ids.join(',');
+  document.getElementById('target-price-val').value = currentTarget != null ? Math.round(currentTarget) : '';
+  document.getElementById('target-price-desc').textContent = `Set price alert for ${routeTitle}. When price drops to or below target, you'll be notified.`;
+  const targetPrefix = document.getElementById('target-price-prefix');
+  if (targetPrefix) targetPrefix.textContent = getCurrencySymbol(appCurrency);
+  new bootstrap.Modal(document.getElementById('targetPriceModal')).show();
+}
+
+async function saveTargetPrice() {
+  const idsStr = document.getElementById('target-price-ids').value;
+  const ids = idsStr ? idsStr.split(',').map(Number) : [];
+  const valStr = document.getElementById('target-price-val').value.trim();
+  const target_price = valStr ? parseFloat(valStr) : null;
+  try {
+    await fetch('/api/routes/target-price', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, target_price }),
+    });
+    bootstrap.Modal.getInstance(document.getElementById('targetPriceModal')).hide();
+    await loadRoutes();
+  } catch (e) {
+    alert('Failed to save target price.');
+  }
+}
+
+// ── Flight Details Modal ───────────────────────────────────────────────────
+function openFlightDetails(routeId) {
+  const r = routes.find(x => x.id === routeId);
+  if (!r) return;
+  const titleEl = document.getElementById('flight-details-title');
+  const subEl   = document.getElementById('flight-details-subtitle');
+  const bodyEl  = document.getElementById('flight-details-content');
+  const gfBtn   = document.getElementById('btn-open-google-flights');
+  const durEl   = document.getElementById('flight-details-duration');
+
+  const rCurr = r.currency || appCurrency;
+  titleEl.innerHTML = `${r.origin} → ${r.destination} <span class="badge bg-secondary ms-2" style="font-size:0.7rem">${r.leg_label.toUpperCase()}</span>`;
+  subEl.textContent = `Departure: ${r.departure_date} · Current Best Price: ${formatMoney(r.current_price, rCurr)}`;
+
+  const gfUrl = getGoogleFlightsUrl(r.origin, r.destination, r.departure_date, null, r.seat_type, r.non_stop_only);
+  gfBtn.href = gfUrl;
+
+  const details = r.flight_details;
+  if (!details || !details.legs || !details.legs.length) {
+    bodyEl.innerHTML = `
+      <div class="text-center text-secondary py-4">
+        <i class="bi bi-airplane me-1 fs-4 d-block mb-2 text-cyan"></i>
+        Detailed airline and itinerary segments will appear on the next price check.
+      </div>`;
+    durEl.textContent = '';
+  } else {
+    let html = '';
+    const stopsText = details.stops === 0 ? 'Non-stop' : `${details.stops} stop${details.stops > 1 ? 's' : ''}`;
+    durEl.textContent = `Total Flight Time: ${formatMinutes(details.duration)} · ${stopsText}`;
+
+    for (let i = 0; i < details.legs.length; i++) {
+      const leg = details.legs[i];
+      html += `
+        <div class="itinerary-leg-card">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div>
+              <span class="itinerary-airline"><i class="bi bi-airplane-engines me-1"></i>${leg.airline || 'Flight'}</span>
+              <span class="itinerary-flight-num">#${leg.flight_number || ''}</span>
+            </div>
+            <span class="badge bg-dark border border-secondary text-secondary small">${formatMinutes(leg.duration)}</span>
+          </div>
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <div class="itinerary-time">${formatTime(leg.departure_time)}</div>
+              <div class="itinerary-airport">${leg.departure_airport || r.origin}</div>
+            </div>
+            <div class="text-center text-secondary small px-3">
+              <i class="bi bi-arrow-right fs-5 text-cyan"></i>
+            </div>
+            <div class="text-end">
+              <div class="itinerary-time">${formatTime(leg.arrival_time)}</div>
+              <div class="itinerary-airport">${leg.arrival_airport || r.destination}</div>
+            </div>
+          </div>
+        </div>
+      `;
+      if (i < details.legs.length - 1) {
+        const nextLeg = details.legs[i + 1];
+        const layoverMins = getMinutesDiff(leg.arrival_time, nextLeg.departure_time);
+        html += `
+          <div class="itinerary-layover">
+            <i class="bi bi-hourglass-split"></i>
+            <span>Layover in <strong>${leg.arrival_airport}</strong>: ${formatMinutes(layoverMins)}</span>
+          </div>
+        `;
+      }
+    }
+    bodyEl.innerHTML = html;
+  }
+
+  new bootstrap.Modal(document.getElementById('flightDetailsModal')).show();
 }
 
 async function testNotification() {

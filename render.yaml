@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: flight-price-tracker
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 1 -b 0.0.0.0:$PORT "main:app"
+    disk:
+      name: flights-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DB_PATH
+        value: /data/flights.db
+      - key: TZ
+        value: Asia/Kolkata
+      - key: CURRENCY
+        value: INR
+      - key: POLL_INTERVAL_MINUTES
+        value: "60"
+      - key: PUSHOVER_TOKEN
+        sync: false
+      - key: PUSHOVER_USER
+        sync: false

@@ -1,16 +1,19 @@
 import json
+import os
 import threading
 from datetime import datetime, timedelta
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, render_template, request, Response
 
 from .db import (
     add_route, archive_past_routes, assign_routes_to_trip, count_archived_routes,
     create_named_trip, delete_named_trip, delete_route, delete_routes_batch,
-    get_all_routes, get_best_combo, get_latest_price_for_routes,
+    export_price_history_csv, get_all_routes, get_best_combo, get_latest_price_for_routes,
     get_named_trips, get_previous_price_for_routes,
     get_price_history, get_price_stats_for_routes,
-    get_setting, next_trip_id, set_routes_notify, set_setting, update_named_trip,
+    get_setting, next_trip_id, set_routes_notify, set_routes_target_price,
+    set_setting, update_named_trip,
 )
+from .airports import search_airports, search_airlines
 from .pushover import send_pushover
 from .scheduler import check_all_routes, reschedule
 
@@ -49,6 +52,7 @@ def list_routes():
     prev   = get_previous_price_for_routes(_db(), ids)
     stats  = get_price_stats_for_routes(_db(), ids)
     today  = _TODAY()
+    app_currency = get_setting(_db(), 'currency', os.environ.get('CURRENCY', 'INR'))
 
     result = []
     for r in routes:
@@ -59,10 +63,12 @@ def list_routes():
         entry['is_past']  = r['departure_date'] < today
         if lp:
             entry['current_price']  = lp['price']
+            entry['currency']       = lp.get('currency') or app_currency
             entry['last_checked']   = lp['checked_at']
             entry['flight_details'] = json.loads(lp['flight_details']) if lp['flight_details'] else None
         else:
             entry['current_price']  = None
+            entry['currency']       = app_currency
             entry['last_checked']   = None
             entry['flight_details'] = None
         entry['prev_price'] = prev.get(rid)
@@ -122,6 +128,19 @@ def set_notify():
     notify = 1 if data.get('notify') else 0
     set_routes_notify(_db(), ids, notify)
     return jsonify({'ok': True, 'notify': notify})
+
+
+@bp.route('/api/routes/target-price', methods=['PATCH'])
+def set_target_price():
+    data = request.get_json(force=True)
+    ids = [int(i) for i in data.get('ids', [])]
+    target_price = data.get('target_price')
+    if target_price is not None and str(target_price).strip() != '':
+        target_price = float(target_price)
+    else:
+        target_price = None
+    set_routes_target_price(_db(), ids, target_price)
+    return jsonify({'ok': True, 'target_price': target_price})
 
 
 @bp.route('/api/routes/batch', methods=['DELETE'])
@@ -227,6 +246,7 @@ def remove_trip(trip_id: int):
 @bp.route('/api/named-trips/<int:trip_id>/combo', methods=['GET'])
 def trip_combo(trip_id: int):
     combo = get_best_combo(_db(), trip_id)
+    combo['currency'] = get_setting(_db(), 'currency', os.environ.get('CURRENCY', 'INR'))
     return jsonify(combo)
 
 
@@ -239,32 +259,87 @@ def manual_poll():
     return jsonify({'status': 'started'})
 
 
+# ── Airports & Airlines Search ─────────────────────────────────────────────
+
+@bp.route('/api/airports', methods=['GET'])
+def get_airports():
+    q = request.args.get('q', '').strip()
+    return jsonify(search_airports(q))
+
+
+@bp.route('/api/airlines', methods=['GET'])
+def get_airlines():
+    q = request.args.get('q', '').strip()
+    return jsonify(search_airlines(q))
+
+
+# ── CSV Export ─────────────────────────────────────────────────────────────
+
+@bp.route('/api/export/csv', methods=['GET'])
+def export_csv():
+    csv_data = export_price_history_csv(_db())
+    return Response(
+        csv_data,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=flight_price_history.csv'}
+    )
+
+
 # ── Notifications ──────────────────────────────────────────────────────────
 
 @bp.route('/api/notify/test', methods=['POST'])
 def test_notification():
     ok = send_pushover(
         'Your Flight Price Tracker notifications are working correctly.',
-        title='✈ Test Notification'
+        title='✈ Test Notification',
+        db_path=_db()
     )
     if ok:
         return jsonify({'status': 'sent'})
-    return jsonify({'status': 'error', 'detail': 'Pushover not configured or request failed'}), 400
+    return jsonify({'status': 'error', 'detail': 'No notification channels succeeded. Configure Pushover, Discord Webhook, or Telegram in Settings.'}), 400
 
 
 # ── Settings ───────────────────────────────────────────────────────────────
 
 @bp.route('/api/settings', methods=['GET'])
 def get_settings():
-    interval = int(get_setting(_db(), 'poll_interval_minutes', '480'))
-    return jsonify({'poll_interval_minutes': interval})
+    db = _db()
+    interval = int(get_setting(db, 'poll_interval_minutes', '480'))
+    currency = get_setting(db, 'currency', os.environ.get('CURRENCY', 'INR'))
+    pushover_token = get_setting(db, 'pushover_token', os.environ.get('PUSHOVER_TOKEN', ''))
+    pushover_user = get_setting(db, 'pushover_user', os.environ.get('PUSHOVER_USER', ''))
+    discord_webhook = get_setting(db, 'discord_webhook_url', os.environ.get('DISCORD_WEBHOOK_URL', ''))
+    telegram_bot = get_setting(db, 'telegram_bot_token', os.environ.get('TELEGRAM_BOT_TOKEN', ''))
+    telegram_chat = get_setting(db, 'telegram_chat_id', os.environ.get('TELEGRAM_CHAT_ID', ''))
+    return jsonify({
+        'poll_interval_minutes': interval,
+        'currency': currency,
+        'pushover_token': pushover_token,
+        'pushover_user': pushover_user,
+        'discord_webhook_url': discord_webhook,
+        'telegram_bot_token': telegram_bot,
+        'telegram_chat_id': telegram_chat,
+    })
 
 
 @bp.route('/api/settings', methods=['POST'])
 def update_settings():
     data = request.get_json(force=True)
+    db = _db()
     interval = int(data.get('poll_interval_minutes', 480))
     interval = max(15, min(interval, 10080))
-    set_setting(_db(), 'poll_interval_minutes', str(interval))
-    reschedule(_db(), interval)
-    return jsonify({'poll_interval_minutes': interval})
+    set_setting(db, 'poll_interval_minutes', str(interval))
+    reschedule(db, interval)
+
+    currency = data.get('currency')
+    if currency:
+        currency = str(currency).upper().strip()
+        set_setting(db, 'currency', currency)
+    else:
+        currency = get_setting(db, 'currency', os.environ.get('CURRENCY', 'INR'))
+
+    for k in ['pushover_token', 'pushover_user', 'discord_webhook_url', 'telegram_bot_token', 'telegram_chat_id']:
+        if k in data:
+            set_setting(db, k, str(data[k]).strip())
+
+    return jsonify({'poll_interval_minutes': interval, 'currency': currency, 'ok': True})

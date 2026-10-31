@@ -18,6 +18,6 @@ VOLUME /config
 EXPOSE 7002
 
 HEALTHCHECK --interval=60s --timeout=5s --start-period=15s \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:7002/')" || exit 1
+  CMD python -c "import os, urllib.request; port = os.environ.get('PORT', 7002); urllib.request.urlopen(f'http://localhost:{port}/')" || exit 1
 
 CMD ["python", "main.py"]

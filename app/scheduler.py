@@ -43,7 +43,8 @@ def reschedule(db_path: str, interval_minutes: int):
 
 def check_all_routes(db_path: str):
     from .db import (get_active_routes, get_best_combo, get_named_trips,
-                     get_last_price, save_price_history, update_trip_last_combo)
+                     get_last_price, save_price_history, update_trip_last_combo,
+                     get_setting)
     from .search import search_route
     from .pushover import send_pushover
 
@@ -51,7 +52,19 @@ def check_all_routes(db_path: str):
     if not routes:
         return
 
-    logger.info("Polling prices for %d routes", len(routes))
+    currency = get_setting(db_path, 'currency', os.environ.get('CURRENCY', 'USD'))
+    currency_symbols = {
+        'USD': '$',
+        'INR': '₹',
+        'EUR': '€',
+        'GBP': '£',
+        'CAD': 'CA$',
+        'AUD': 'A$',
+        'JPY': '¥',
+    }
+    sym = currency_symbols.get(currency, f"{currency} ")
+
+    logger.info("Polling prices for %d routes (currency: %s)", len(routes), currency)
     for route in routes:
         try:
             airlines = json.loads(route['airlines']) if route['airlines'] else None
@@ -63,18 +76,33 @@ def check_all_routes(db_path: str):
                 non_stop_only=bool(route['non_stop_only']),
                 airlines=airlines,
                 seat_type=route['seat_type'],
+                currency=currency,
             )
 
             last_price = get_last_price(db_path, route['id'])
 
             if result:
                 price = result['price']
+                res_currency = result.get('currency') or currency
                 details = json.dumps({
                     'duration': result.get('duration'),
                     'stops': result.get('stops'),
                     'legs': result.get('legs', []),
                 })
-                save_price_history(db_path, route['id'], price, 'USD', details)
+                save_price_history(db_path, route['id'], price, res_currency, details)
+
+                target_price = route.get('target_price')
+                if (target_price is not None and price <= target_price and
+                        (last_price is None or last_price > target_price) and
+                        route['day_offset'] == 0):
+                    savings = target_price - price
+                    msg = (
+                        f"🎯 Target Price Hit!\n"
+                        f"{route['origin']} → {route['destination']}  |  {route['departure_date']}\n"
+                        f"Current Price: {sym}{price:,.0f} (Target was {sym}{target_price:,.0f})\n"
+                        f"You save {sym}{savings:,.0f} below your target!"
+                    )
+                    send_pushover(msg, title=f"🎯 Target Met: {route['origin']}→{route['destination']}", db_path=db_path)
 
                 if (last_price is not None and price != last_price
                         and route['day_offset'] == 0 and route.get('notify') == 1):
@@ -83,14 +111,14 @@ def check_all_routes(db_path: str):
                     direction = 'dropped' if diff < 0 else 'increased'
                     msg = (
                         f"{route['origin']} → {route['destination']}  |  {route['departure_date']}\n"
-                        f"Price {direction} by ${abs(diff):.0f}  "
-                        f"(was ${last_price:.0f}, now ${price:.0f})\n"
+                        f"Price {direction} by {sym}{abs(diff):,.0f}  "
+                        f"(was {sym}{last_price:,.0f}, now {sym}{price:,.0f})\n"
                         f"{route['seat_type'].title()} · {airlines_str}"
                     )
                     icon = '📉' if diff < 0 else '📈'
-                    send_pushover(msg, title=f"{icon} Flight Price {direction.title()}")
+                    send_pushover(msg, title=f"{icon} Flight Price {direction.title()}", db_path=db_path)
             else:
-                save_price_history(db_path, route['id'], None, 'USD', None)
+                save_price_history(db_path, route['id'], None, currency, None)
 
         except Exception:
             logger.exception("Error checking route id=%s", route['id'])
@@ -115,15 +143,15 @@ def check_all_routes(db_path: str):
                 if prev_was_over or price_dropped:
                     savings = budget - current_total
                     legs_str = '  +  '.join(
-                        f"{l['origin']}→{l['destination']} {l['departure_date']} ${l['price']:.0f}"
+                        f"{l['origin']}→{l['destination']} {l['departure_date']} {sym}{l['price']:,.0f}"
                         for l in combo['legs']
                     )
                     msg = (
-                        f"✓ Under budget by ${savings:.0f}\n"
+                        f"✓ Under budget by {sym}{savings:,.0f}\n"
                         f"{legs_str}\n"
-                        f"Total: ${current_total:.0f}  /  Budget: ${budget:.0f}"
+                        f"Total: {sym}{current_total:,.0f}  /  Budget: {sym}{budget:,.0f}"
                     )
-                    send_pushover(msg, title=f"🎯 {trip['name']} — Budget Hit")
+                    send_pushover(msg, title=f"🎯 {trip['name']} — Budget Hit", db_path=db_path)
 
             update_trip_last_combo(db_path, trip['id'], current_total)
     except Exception:

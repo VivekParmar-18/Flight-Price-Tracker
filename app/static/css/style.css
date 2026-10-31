@@ -1128,3 +1128,184 @@ body {
     padding-right: calc(var(--bs-gutter-x) * 0.5);
   }
 }
+
+/* ── Airport & Airline Autocomplete ───────────────────────────────────── */
+.airport-autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1055;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-hi);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  max-height: 240px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.airport-item {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.15s ease;
+}
+
+.airport-item:hover {
+  background: var(--c-hover);
+}
+
+.airport-item:last-child {
+  border-bottom: none;
+}
+
+.airport-code-badge {
+  font-family: var(--font-data);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--c-cyan);
+  background: var(--c-cyan-dim);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  min-width: 44px;
+  text-align: center;
+}
+
+.airport-info {
+  line-height: 1.25;
+  overflow: hidden;
+}
+
+.airport-name {
+  font-size: 0.8rem;
+  color: var(--c-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.airport-city {
+  font-size: 0.7rem;
+  color: var(--c-text-dim);
+}
+
+/* ── Deal & Target Badges ────────────────────────────────────────────── */
+.badge-deal {
+  background: rgba(0, 224, 154, 0.12);
+  color: var(--c-green);
+  border: 1px solid rgba(0, 224, 154, 0.3);
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 20px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  animation: pulse-glow 2.5s infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(0, 224, 154, 0); }
+  50% { box-shadow: 0 0 8px rgba(0, 224, 154, 0.25); }
+}
+
+.target-badge {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  background: rgba(240, 178, 42, 0.1);
+  color: var(--c-amber);
+  border: 1px solid rgba(240, 178, 42, 0.25);
+  transition: all 0.15s ease;
+}
+
+.target-badge:hover {
+  background: rgba(240, 178, 42, 0.2);
+}
+
+.target-badge.met {
+  background: rgba(0, 224, 154, 0.12);
+  color: var(--c-green);
+  border-color: rgba(0, 224, 154, 0.3);
+}
+
+/* ── Subcard Quick Actions ───────────────────────────────────────────── */
+.subcard-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.subcard-btn {
+  background: transparent;
+  border: none;
+  color: var(--c-text-dim);
+  padding: 2px 5px;
+  border-radius: var(--radius-xs);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  text-decoration: none;
+}
+
+.subcard-btn:hover {
+  color: var(--c-cyan);
+  background: var(--c-hover);
+}
+
+/* ── Flight Details Itinerary ────────────────────────────────────────── */
+.itinerary-leg-card {
+  background: var(--c-subcard);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.itinerary-airline {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--c-cyan);
+}
+
+.itinerary-flight-num {
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+  color: var(--c-text-dim);
+  margin-left: 6px;
+}
+
+.itinerary-time {
+  font-family: var(--font-data);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.itinerary-airport {
+  font-size: 0.75rem;
+  color: var(--c-text-dim);
+}
+
+.itinerary-layover {
+  background: rgba(240, 178, 42, 0.08);
+  border: 1px dashed rgba(240, 178, 42, 0.3);
+  color: var(--c-amber);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  margin: -4px 0 10px 0;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+

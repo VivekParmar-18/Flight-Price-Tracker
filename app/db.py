@@ -66,6 +66,7 @@ def _migrate(db_path: str):
             "ALTER TABLE routes ADD COLUMN day_offset INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE routes ADD COLUMN named_trip_id INTEGER REFERENCES trips(id)",
             "ALTER TABLE routes ADD COLUMN notify INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE routes ADD COLUMN target_price REAL",
         ]:
             try:
                 conn.execute(stmt)
@@ -138,6 +139,17 @@ def set_routes_notify(db_path: str, route_ids: list[int], notify: int):
         conn.execute(
             f"UPDATE routes SET notify = ? WHERE id IN ({placeholders})",
             [notify] + list(route_ids)
+        )
+
+
+def set_routes_target_price(db_path: str, route_ids: list[int], target_price: float | None):
+    if not route_ids:
+        return
+    placeholders = ','.join('?' * len(route_ids))
+    with _connect(db_path) as conn:
+        conn.execute(
+            f"UPDATE routes SET target_price = ? WHERE id IN ({placeholders})",
+            [target_price] + list(route_ids)
         )
 
 
@@ -425,3 +437,23 @@ def set_setting(db_path: str, key: str, value: str):
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
             (key, value)
         )
+
+
+def export_price_history_csv(db_path: str) -> str:
+    import io, csv
+    with _connect(db_path) as conn:
+        rows = conn.execute("""
+            SELECT r.origin, r.destination, r.departure_date, r.leg_label, r.seat_type,
+                   ph.price, ph.currency, ph.checked_at, t.name AS trip_name
+            FROM price_history ph
+            JOIN routes r ON ph.route_id = r.id
+            LEFT JOIN trips t ON r.named_trip_id = t.id
+            ORDER BY ph.checked_at DESC
+        """).fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Origin', 'Destination', 'Departure Date', 'Leg', 'Cabin', 'Price', 'Currency', 'Checked At', 'Trip'])
+    for r in rows:
+        writer.writerow([r['origin'], r['destination'], r['departure_date'], r['leg_label'], r['seat_type'], r['price'], r['currency'], r['checked_at'], r['trip_name'] or ''])
+    return output.getvalue()

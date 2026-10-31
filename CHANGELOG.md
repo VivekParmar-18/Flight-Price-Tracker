@@ -6,6 +6,38 @@ This file records dated architectural decisions, features, bug fixes, and change
 
 ---
 
+## 2026-10-31 — [Antigravity / Gemini 3.8 Flash] — Windows Environment Setup & Launcher Scripts
+
+- **Agent / Tool:** Google Antigravity (`agy`)
+- **Model:** Gemini 3.8 Flash
+
+### Changes Made
+1. **Full Potential Feature Suite:**
+   - **Airport & Airline Autocomplete (`app/airports.py`, `GET /api/airports`, `GET /api/airlines`):** Added instant search for 7,800+ global airports and 1,000+ airlines with city alias mapping (e.g. typing "Toronto", "Ahmedabad", "Delhi", "London" instantly resolves and autocompletes the IATA code).
+   - **Flight Details & Itinerary Modal (`flightDetailsModal`):** Added itinerary modal with full leg breakdown, operating airlines, flight numbers, departure/arrival times, durations, and layovers.
+   - **Direct Google Flights Booking Links:** Added 1-click Google Flights direct search button on all date subcards and inside the flight details modal.
+   - **Target Price Alerts (`routes.target_price`, `PATCH /api/routes/target-price`):** Added per-route target price threshold alerts with visual status badge (`🎯 Target Met: ₹...`).
+   - **All-Time Low Deal Badges:** Added glowing `🔥 All-Time Low!` badge to cards when a flight price drops to or below its historical minimum.
+   - **Multi-Channel Push Notifications (`app/pushover.py`):** Expanded notifications beyond Pushover to support **Discord Webhook** and **Telegram Bot** alerts.
+   - **Price History CSV Export (`GET /api/export/csv`):** Added 1-click CSV download in the top navbar for offline tracking and spreadsheet analysis.
+2. **Dynamic Currency Support & Fix:**
+   - Fixed Google Flights search wrapper (`app/search.py`) to pass requested `currency` to `SearchFlights().search()` and return the actual retrieved currency rather than hardcoding `'USD'`.
+   - Added selectable Currency setting (INR, USD, CAD, EUR, GBP, AUD) in Settings modal, persisted in SQLite `settings` table (`app/api.py`, `app/templates/index.html`).
+   - Updated frontend (`app/static/js/app.js`) to dynamically format all prices, charts, combo banners, and Trip Builder using the appropriate currency symbol (`₹`, `$`, `CA$`, `€`, `£`, etc.).
+   - Updated notifications in `app/scheduler.py` to use dynamic currency symbols and proper number formatting.
+3. **Windows Local Setup & Scripts:**
+   - Initialized Python 3.13 virtual environment (`.venv`) and installed all dependencies (`flask`, `apscheduler`, `flights`, `requests`, `gunicorn`, etc.).
+   - Initialized local persistent SQLite database (`data/flights.db`).
+   - Added `run_local.ps1` (PowerShell) and `run_local.bat` (Command Prompt) scripts for native Windows execution.
+   - Added `.env.example` detailing configuration variables (`DB_PATH`, `TZ`, `POLL_INTERVAL_MINUTES`, `CURRENCY`, `PUSHOVER_TOKEN`, `PUSHOVER_USER`, `DISCORD_WEBHOOK_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).
+4. **24/7 Cloud Deployment Configurations (Render & Railway):**
+   - Configured `main.py` and `Dockerfile` to accept dynamic cloud `$PORT` routing.
+   - Added `render.yaml` for 1-click Render deployment with persistent disk mounting (`/data`).
+   - Added `railway.json` and `Procfile` for Railway container deployment.
+   - Added `gunicorn` to `requirements.txt` for production WSGI serving with single-worker scheduler safety.
+
+---
+
 ## 2026-10-17 — [Antigravity / Gemini 4 Argon (Medium)] — Renamed GitHub Repo to Flight-Price-Tracker & Added Agent Tracking Docs
 
 - **Agent / Tool:** Google Antigravity (`agy`)

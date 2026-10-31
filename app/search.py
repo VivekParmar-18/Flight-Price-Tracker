@@ -34,7 +34,8 @@ def _airport(code: str) -> Airport | None:
 def search_route(origin: str, destination: str, departure_date: str,
                  adults: int = 1, non_stop_only: bool = False,
                  airlines: list[str] | None = None,
-                 seat_type: str = 'ECONOMY') -> dict | None:
+                 seat_type: str = 'ECONOMY',
+                 currency: str | None = None) -> dict | None:
     dep = _airport(origin)
     arr = _airport(destination)
     if not dep or not arr:
@@ -63,7 +64,7 @@ def search_route(origin: str, destination: str, departure_date: str,
     )
 
     try:
-        results = SearchFlights().search(filters)
+        results = SearchFlights().search(filters, currency=currency)
     except Exception as e:
         logger.error("fli search error for %s→%s on %s: %s", origin, destination, departure_date, e)
         return None
@@ -84,9 +85,10 @@ def search_route(origin: str, destination: str, departure_date: str,
             'duration': getattr(leg, 'duration', None),
         })
 
+    res_currency = getattr(best, 'currency', None) or currency or 'USD'
     return {
         'price': best.price,
-        'currency': 'USD',
+        'currency': res_currency,
         'duration': best.duration,
         'stops': best.stops,
         'legs': legs,
