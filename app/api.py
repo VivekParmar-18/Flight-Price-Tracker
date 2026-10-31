@@ -17,6 +17,11 @@ from .airports import search_airports, search_airlines
 from .pushover import send_pushover
 from .scheduler import check_all_routes, reschedule
 
+import re
+import logging
+
+logger = logging.getLogger(__name__)
+
 bp = Blueprint('api', __name__)
 
 _TODAY = lambda: datetime.now().strftime('%Y-%m-%d')
@@ -26,8 +31,38 @@ def _db():
     return current_app.config['DB_PATH']
 
 
+def _clean_iata(code_str: str) -> str:
+    if not code_str:
+        return ''
+    s = str(code_str).strip().upper()
+    match = re.search(r'\b([A-Z]{3})\b', s)
+    if match:
+        return match.group(1)
+    return s[:3]
+
+
+def _parse_date(date_str: str) -> datetime:
+    if not date_str:
+        raise ValueError("Date is required")
+    s = str(date_str).strip()
+    formats = [
+        '%Y-%m-%d',
+        '%d-%m-%Y',
+        '%m-%d-%Y',
+        '%d/%m/%Y',
+        '%m/%d/%Y',
+        '%Y/%m/%d',
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Invalid date format '{s}'. Please use YYYY-MM-DD or DD-MM-YYYY.")
+
+
 def _date_variants(date_str: str) -> list[tuple[str, int]]:
-    base = datetime.strptime(date_str, '%Y-%m-%d')
+    base = _parse_date(date_str)
     return [
         ((base + timedelta(days=offset)).strftime('%Y-%m-%d'), offset)
         for offset in (-1, 0, 1)
@@ -85,34 +120,53 @@ def list_routes():
 
 @bp.route('/api/routes', methods=['POST'])
 def create_routes():
-    data = request.get_json(force=True)
-    trip_type     = data.get('trip_type', 'one_way')
-    adults        = int(data.get('adults', 1))
-    seat_type     = data.get('seat_type', 'ECONOMY').upper()
-    non_stop      = bool(data.get('non_stop_only', False))
-    airlines      = [a.strip().upper() for a in data.get('airlines', []) if a.strip()] or None
-    named_trip_id = data.get('named_trip_id') or None
-    if named_trip_id is not None:
-        named_trip_id = int(named_trip_id)
+    try:
+        data = request.get_json(force=True)
+        trip_type     = data.get('trip_type', 'one_way')
+        adults        = int(data.get('adults', 1))
+        seat_type     = data.get('seat_type', 'ECONOMY').upper()
+        non_stop      = bool(data.get('non_stop_only', False))
+        airlines      = [a.strip().upper() for a in data.get('airlines', []) if a.strip()] or None
+        raw_trip      = data.get('named_trip_id')
+        named_trip_id = None
+        if raw_trip is not None and str(raw_trip).strip():
+            raw_trip_str = str(raw_trip).strip()
+            if raw_trip_str.isdigit():
+                named_trip_id = int(raw_trip_str)
+            else:
+                from .db import get_named_trips, create_named_trip
+                existing = get_named_trips(_db())
+                matched = next((t for t in existing if t['name'].lower() == raw_trip_str.lower()), None)
+                if matched:
+                    named_trip_id = matched['id']
+                else:
+                    named_trip_id = create_named_trip(_db(), raw_trip_str, None, None, '#6366f1')
 
-    created = []
-    tid = next_trip_id(_db())
+        created = []
+        tid = next_trip_id(_db())
 
-    legs = [('outbound', data.get('outbound', data))]
-    if trip_type == 'round_trip' and data.get('return'):
-        legs.append(('return', data['return']))
+        legs = [('outbound', data.get('outbound', data))]
+        if trip_type == 'round_trip' and data.get('return'):
+            legs.append(('return', data['return']))
 
-    for leg_label, seg in legs:
-        for date_str, offset in _date_variants(seg['departure_date']):
-            rid = add_route(
-                _db(), tid, leg_label,
-                seg['origin'], seg['destination'], date_str,
-                non_stop, airlines, adults, seat_type, offset,
-                named_trip_id=named_trip_id,
-            )
-            created.append(rid)
+        for leg_label, seg in legs:
+            origin = _clean_iata(seg.get('origin', ''))
+            destination = _clean_iata(seg.get('destination', ''))
+            if len(origin) != 3 or len(destination) != 3:
+                return jsonify({'error': f"Origin '{origin}' and destination '{destination}' must be valid 3-letter airport codes (e.g. YYZ, AMD)."}), 400
+            for date_str, offset in _date_variants(seg['departure_date']):
+                rid = add_route(
+                    _db(), tid, leg_label,
+                    origin, destination, date_str,
+                    non_stop, airlines, adults, seat_type, offset,
+                    named_trip_id=named_trip_id,
+                )
+                created.append(rid)
 
-    return jsonify({'created': created}), 201
+        return jsonify({'created': created, 'named_trip_id': named_trip_id}), 201
+    except Exception as e:
+        logger.exception("Error creating route: %s", e)
+        return jsonify({'error': str(e)}), 400
 
 
 @bp.route('/api/routes/<int:route_id>', methods=['DELETE'])

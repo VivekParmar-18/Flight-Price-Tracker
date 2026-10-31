@@ -12,7 +12,6 @@ def _connect(db_path: str) -> sqlite3.Connection:
 
 
 def init_db(db_path: str):
-    _migrate(db_path)
     with _connect(db_path) as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS trips (
@@ -40,7 +39,8 @@ def init_db(db_path: str):
                 active          INTEGER NOT NULL DEFAULT 1,
                 created_at      TEXT    NOT NULL,
                 day_offset      INTEGER NOT NULL DEFAULT 0,
-                notify          INTEGER NOT NULL DEFAULT 0
+                notify          INTEGER NOT NULL DEFAULT 0,
+                target_price    REAL
             );
 
             CREATE TABLE IF NOT EXISTS price_history (
@@ -58,20 +58,23 @@ def init_db(db_path: str):
                 value TEXT NOT NULL
             );
         """)
+    _migrate(db_path)
 
 
 def _migrate(db_path: str):
     with _connect(db_path) as conn:
-        for stmt in [
-            "ALTER TABLE routes ADD COLUMN day_offset INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE routes ADD COLUMN named_trip_id INTEGER REFERENCES trips(id)",
-            "ALTER TABLE routes ADD COLUMN notify INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE routes ADD COLUMN target_price REAL",
-        ]:
-            try:
-                conn.execute(stmt)
-            except Exception:
-                pass
+        try:
+            cols = {row['name'] for row in conn.execute("PRAGMA table_info(routes)").fetchall()}
+            if 'day_offset' not in cols:
+                conn.execute("ALTER TABLE routes ADD COLUMN day_offset INTEGER NOT NULL DEFAULT 0")
+            if 'named_trip_id' not in cols:
+                conn.execute("ALTER TABLE routes ADD COLUMN named_trip_id INTEGER REFERENCES trips(id)")
+            if 'notify' not in cols:
+                conn.execute("ALTER TABLE routes ADD COLUMN notify INTEGER NOT NULL DEFAULT 0")
+            if 'target_price' not in cols:
+                conn.execute("ALTER TABLE routes ADD COLUMN target_price REAL")
+        except Exception:
+            pass
 
 
 def _now() -> str:
@@ -145,6 +148,7 @@ def set_routes_notify(db_path: str, route_ids: list[int], notify: int):
 def set_routes_target_price(db_path: str, route_ids: list[int], target_price: float | None):
     if not route_ids:
         return
+    _migrate(db_path)
     placeholders = ','.join('?' * len(route_ids))
     with _connect(db_path) as conn:
         conn.execute(

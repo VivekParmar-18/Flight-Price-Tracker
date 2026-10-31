@@ -4,6 +4,24 @@ This file records dated architectural decisions, features, bug fixes, and change
 
 > **Instruction for AI Agents:** Whenever you modify this repository, append a new dated section (`## YYYY-MM-DD — [Agent / Model Name] — Summary`) at the top of the log below documenting which agent/model made the changes, what changed, and why.
 
+## 2026-11-01 — [Antigravity / Gemini 3.8 Flash] — Fix Target Price DB Schema & Robust Route/Date Creation
+
+- **Agent / Tool:** Google Antigravity (`agy`)
+- **Model:** Gemini 3.8 Flash
+
+### Changes Made
+1. **Target Price Schema & Migration Auto-Heal (`app/db.py`):**
+   - Fixed `sqlite3.OperationalError: no such column: target_price` by adding `target_price REAL` directly to the `CREATE TABLE IF NOT EXISTS routes` definition.
+   - Fixed execution order so `_migrate` runs *after* table creation, inspecting `PRAGMA table_info` to ensure all columns exist.
+   - Added automatic migration hook inside `set_routes_target_price` to prevent 500 errors on existing databases.
+2. **Flexible Date & IATA Parser (`app/api.py`, `app/static/js/app.js`):**
+   - Added `_parse_date` supporting multiple date formats (`DD-MM-YYYY`, `YYYY-MM-DD`, `DD/MM/YYYY`, etc.) so dates like `10-01-2027` and `13-02-2027` are cleanly parsed without ValueError crashes.
+   - Added `_clean_iata` regex extraction for origins/destinations.
+   - Added automatic named trip resolution: if a user types a trip name (e.g. "Karan") rather than an ID, the backend automatically finds or creates the trip and assigns the routes.
+   - Enhanced modal error feedback to display the exact backend error message.
+
+---
+
 ## 2026-10-31 — [Antigravity / Gemini 3.8 Flash] — Add Production Logging & Search Diagnostic Endpoint
 
 - **Agent / Tool:** Google Antigravity (`agy`)

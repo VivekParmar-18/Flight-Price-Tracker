@@ -959,17 +959,33 @@ async function addRoute() {
   const errEl    = document.getElementById('add-error');
   errEl.classList.add('d-none');
 
+  const cleanIata = s => {
+    if (!s) return '';
+    const m = s.toUpperCase().match(/\b([A-Z]{3})\b/);
+    return m ? m[1] : s.trim().slice(0, 3).toUpperCase();
+  };
+
+  const cleanDate = d => {
+    if (!d) return '';
+    d = d.trim();
+    const parts = d.split(/[-/]/);
+    if (parts.length === 3 && parts[2].length === 4) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    return d;
+  };
+
   const tripType = document.querySelector('input[name="tripType"]:checked').value;
-  const outOrigin = document.getElementById('out-origin').value.trim().toUpperCase();
-  const outDest   = document.getElementById('out-dest').value.trim().toUpperCase();
-  const outDate   = document.getElementById('out-date').value;
+  const outOrigin = cleanIata(document.getElementById('out-origin').value);
+  const outDest   = cleanIata(document.getElementById('out-dest').value);
+  const outDate   = cleanDate(document.getElementById('out-date').value);
   const adults    = parseInt(document.getElementById('opt-adults').value) || 1;
   const seatType  = document.getElementById('opt-seat').value;
   const nonStop   = document.getElementById('opt-nonstop').checked;
   const airlinesRaw = document.getElementById('opt-airlines').value;
   const airlines  = airlinesRaw ? airlinesRaw.split(',').map(a => a.trim().toUpperCase()).filter(Boolean) : [];
   const namedTripIdVal = document.getElementById('opt-trip').value;
-  const namedTripId = namedTripIdVal ? parseInt(namedTripIdVal) : null;
+  const namedTripId = namedTripIdVal ? namedTripIdVal : null;
 
   if (!outOrigin || !outDest || !outDate) { showAddError('Origin, destination, and departure date are required.'); return; }
   if (outOrigin.length !== 3 || outDest.length !== 3) { showAddError('Origin and destination must be 3-letter IATA codes (e.g. JFK, LHR).'); return; }
@@ -982,9 +998,9 @@ async function addRoute() {
   };
 
   if (tripType === 'round_trip') {
-    const retOrigin = document.getElementById('ret-origin').value.trim().toUpperCase();
-    const retDest   = document.getElementById('ret-dest').value.trim().toUpperCase();
-    const retDate   = document.getElementById('ret-date').value;
+    const retOrigin = cleanIata(document.getElementById('ret-origin').value);
+    const retDest   = cleanIata(document.getElementById('ret-dest').value);
+    const retDate   = cleanDate(document.getElementById('ret-date').value);
     if (!retOrigin || !retDest || !retDate) { showAddError('Return origin, destination, and date are required for round trips.'); return; }
     body.return = { origin: retOrigin, destination: retDest, departure_date: retDate };
   }
@@ -999,12 +1015,15 @@ async function addRoute() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error('Server error');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to add route.');
+    }
     bootstrap.Modal.getInstance(document.getElementById('addModal')).hide();
     await loadRoutes();
     await loadNamedTrips();
   } catch (e) {
-    showAddError('Failed to add route. Please try again.');
+    showAddError(e.message || 'Failed to add route. Please try again.');
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Add Route';
@@ -1129,15 +1148,19 @@ async function saveTargetPrice() {
   const valStr = document.getElementById('target-price-val').value.trim();
   const target_price = valStr ? parseFloat(valStr) : null;
   try {
-    await fetch('/api/routes/target-price', {
+    const res = await fetch('/api/routes/target-price', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids, target_price }),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save target price.');
+    }
     bootstrap.Modal.getInstance(document.getElementById('targetPriceModal')).hide();
     await loadRoutes();
   } catch (e) {
-    alert('Failed to save target price.');
+    alert(e.message || 'Failed to save target price.');
   }
 }
 
