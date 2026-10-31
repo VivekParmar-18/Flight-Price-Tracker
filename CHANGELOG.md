@@ -14,7 +14,9 @@ This file records dated architectural decisions, features, bug fixes, and change
    - Configured `logging.basicConfig(level=logging.INFO)` in `main.py` streaming to stdout so Render and container logs capture poll progress and errors.
    - Enhanced `search_route` with `logger.exception` and warnings when no flights are returned by Google Flights.
    - Added per-route polling logs in `check_all_routes` indicating route ID, origin, destination, departure date, and search result price.
-2. **Diagnostic Endpoint (`GET /api/debug/test-search`):**
+2. **Proxy Support for Cloud Deployments (`app/search.py`):**
+   - Added automatic proxy detection (`PROXY_URL`, `HTTPS_PROXY`, `HTTP_PROXY`) and monkey-patched `fli.search.client.Client._session` to inject proxies into all Google Flights RPC requests, enabling cloud instances (Render) to bypass datacenter IP restrictions.
+3. **Diagnostic Endpoint (`GET /api/debug/test-search`):**
    - Added test search endpoint to verify Google Flights connectivity and view raw results/exceptions directly from cloud environments.
 
 ---

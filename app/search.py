@@ -1,4 +1,6 @@
 import logging
+import os
+import fli.search.client
 from fli.models import (
     Airline, Airport, FlightSearchFilters, FlightSegment,
     MaxStops, PassengerInfo, SeatType, SortBy, TripType,
@@ -6,6 +8,21 @@ from fli.models import (
 from fli.search import SearchFlights
 
 logger = logging.getLogger(__name__)
+
+# Configure proxy if specified via environment variables
+def _setup_proxy():
+    proxy = os.environ.get('PROXY_URL') or os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY')
+    if proxy:
+        masked = proxy.split('@')[-1] if '@' in proxy else proxy
+        logger.info("Configuring proxy for flight searches: %s", masked)
+        orig_session = fli.search.client.Client._session
+        def patched_session(self):
+            s = orig_session(self)
+            s.proxies = {'http': proxy, 'https': proxy}
+            return s
+        fli.search.client.Client._session = patched_session
+
+_setup_proxy()
 
 _SEAT_MAP = {
     'ECONOMY': SeatType.ECONOMY,

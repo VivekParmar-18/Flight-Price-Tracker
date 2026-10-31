@@ -262,43 +262,23 @@ def manual_poll():
 @bp.route('/api/debug/test-search', methods=['GET'])
 def debug_test_search():
     import traceback
-    from fli.models import Airport, FlightSearchFilters, FlightSegment, PassengerInfo, SeatType, SortBy, TripType
-    from fli.search.flights import SearchFlights, parse_first_wrb_payload, with_locale_params
+    from .search import search_route
     origin = request.args.get('origin', 'YYZ').upper().strip()
     destination = request.args.get('destination', 'AMD').upper().strip()
     date = request.args.get('date', '2027-01-10').strip()
     currency = request.args.get('currency', 'INR').upper().strip()
+    proxy = os.environ.get('PROXY_URL') or os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY')
+    masked_proxy = (proxy.split('@')[-1] if '@' in proxy else proxy) if proxy else None
     try:
-        filters = FlightSearchFilters(
-            trip_type=TripType.ONE_WAY,
-            passenger_info=PassengerInfo(adults=1),
-            flight_segments=[
-                FlightSegment(
-                    departure_airport=[[Airport[origin], 0]],
-                    arrival_airport=[[Airport[destination], 0]],
-                    travel_date=date,
-                )
-            ],
-            seat_type=SeatType.ECONOMY,
-            sort_by=SortBy.CHEAPEST,
-        )
-        s = SearchFlights()
-        encoded = filters.encode()
-        url = with_locale_params(s.BASE_URL, currency, None, None)
-        resp = s.client.post(url=url, data=f"f.req={encoded}", impersonate="chrome", allow_redirects=True)
-        inner = parse_first_wrb_payload(resp.text)
+        res = search_route(origin=origin, destination=destination, departure_date=date, currency=currency)
         return jsonify({
             'ok': True,
-            'status_code': resp.status_code,
-            'url': resp.url,
-            'text_len': len(resp.text),
-            'text_sample': resp.text[:600],
-            'inner_is_none': inner is None,
-            'inner_len': len(inner) if inner else 0,
-            'inner_sample': str(inner)[:300] if inner else None,
+            'proxy_configured': masked_proxy,
+            'params': {'origin': origin, 'destination': destination, 'date': date, 'currency': currency},
+            'result': res,
         })
     except Exception as e:
-        return jsonify({'ok': False, 'error': str(e), 'traceback': traceback.format_exc()}), 500
+        return jsonify({'ok': False, 'proxy_configured': masked_proxy, 'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 
 # ── Airports & Airlines Search ─────────────────────────────────────────────
