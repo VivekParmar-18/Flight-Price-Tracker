@@ -4,6 +4,19 @@ This file records dated architectural decisions, features, bug fixes, and change
 
 > **Instruction for AI Agents:** Whenever you modify this repository, append a new dated section (`## YYYY-MM-DD — [Agent / Model Name] — Summary`) at the top of the log below documenting which agent/model made the changes, what changed, and why.
 
+## 2026-10-31 — [Antigravity / Gemini 3.8 Flash] — Add Production Logging & Search Diagnostic Endpoint
+
+- **Agent / Tool:** Google Antigravity (`agy`)
+- **Model:** Gemini 3.8 Flash
+
+### Changes Made
+1. **Production Logging (`main.py`, `app/search.py`, `app/scheduler.py`):**
+   - Configured `logging.basicConfig(level=logging.INFO)` in `main.py` streaming to stdout so Render and container logs capture poll progress and errors.
+   - Enhanced `search_route` with `logger.exception` and warnings when no flights are returned by Google Flights.
+   - Added per-route polling logs in `check_all_routes` indicating route ID, origin, destination, departure date, and search result price.
+2. **Diagnostic Endpoint (`GET /api/debug/test-search`):**
+   - Added test search endpoint to verify Google Flights connectivity and view raw results/exceptions directly from cloud environments.
+
 ---
 
 ## 2026-10-31 — [Antigravity / Gemini 3.8 Flash] — Windows Environment Setup & Launcher Scripts

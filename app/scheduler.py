@@ -68,6 +68,7 @@ def check_all_routes(db_path: str):
     for route in routes:
         try:
             airlines = json.loads(route['airlines']) if route['airlines'] else None
+            logger.info("Checking route #%s: %s → %s on %s", route['id'], route['origin'], route['destination'], route['departure_date'])
             result = search_route(
                 origin=route['origin'],
                 destination=route['destination'],
@@ -78,6 +79,7 @@ def check_all_routes(db_path: str):
                 seat_type=route['seat_type'],
                 currency=currency,
             )
+            logger.info("Route #%s result: %s", route['id'], f"{sym}{result['price']}" if result else "No flights found")
 
             last_price = get_last_price(db_path, route['id'])
 

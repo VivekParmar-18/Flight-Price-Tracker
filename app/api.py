@@ -259,6 +259,21 @@ def manual_poll():
     return jsonify({'status': 'started'})
 
 
+@bp.route('/api/debug/test-search', methods=['GET'])
+def debug_test_search():
+    import traceback
+    origin = request.args.get('origin', 'YYZ').upper().strip()
+    destination = request.args.get('destination', 'AMD').upper().strip()
+    date = request.args.get('date', '2027-01-10').strip()
+    currency = request.args.get('currency', 'INR').upper().strip()
+    try:
+        from .search import search_route
+        res = search_route(origin=origin, destination=destination, departure_date=date, currency=currency)
+        return jsonify({'ok': True, 'params': {'origin': origin, 'destination': destination, 'date': date, 'currency': currency}, 'result': res})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
 # ── Airports & Airlines Search ─────────────────────────────────────────────
 
 @bp.route('/api/airports', methods=['GET'])

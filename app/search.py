@@ -66,10 +66,11 @@ def search_route(origin: str, destination: str, departure_date: str,
     try:
         results = SearchFlights().search(filters, currency=currency)
     except Exception as e:
-        logger.error("fli search error for %s→%s on %s: %s", origin, destination, departure_date, e)
+        logger.exception("fli search error for %s→%s on %s: %s", origin, destination, departure_date, e)
         return None
 
     if not results:
+        logger.warning("No flight results returned by Google Flights for %s→%s on %s (currency=%s)", origin, destination, departure_date, currency)
         return None
 
     best = results[0]
